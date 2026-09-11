@@ -310,18 +310,26 @@ const api = {
     const shared = process.env.EXPO_PUBLIC_AI_SHARED_SECRET;
     if (shared) headers['x-mh-secret'] = shared;
 
-    const response = await fetch(`${base.replace(/\/+$/, '')}${route}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(90000),
-    });
+    // Hermes (React Native's JS engine) does not implement AbortSignal.timeout —
+    // the expression threw TypeError before the request ever left the device.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90000);
+    try {
+      const response = await fetch(`${base.replace(/\/+$/, '')}${route}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
 
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error((data as { error?: string }).error || `AI service error (HTTP ${response.status})`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((data as { error?: string }).error || `AI service error (HTTP ${response.status})`);
+      }
+      return (data as { content: string }).content;
+    } finally {
+      clearTimeout(timer);
     }
-    return (data as { content: string }).content;
   },
 
   parseAnalysisResult(content: string, isAr: boolean) {

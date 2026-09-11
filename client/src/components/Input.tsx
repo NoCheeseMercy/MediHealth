@@ -19,10 +19,11 @@ export function Input({ label, error, hint, secure, icon, style, multiline, ...p
 
   const borderColor = error ? colors.danger : focused ? colors.ring : colors.border;
 
-  // RN's paddingStart/End follow I18nManager, which this app doesn't flip
-  // globally (it aligns per-text instead), so compute the sides by hand.
-  const leadingPad = icon ? 44 : 16;
-  const trailingPad = secure ? 46 : 16;
+  // Where the text begins: left in LTR, right in RTL. The leading icon sits on
+  // that side, so the START edge gets the wide pad. The old code widened the
+  // wrong edge in RTL, letting the icon overlap the text.
+  const startPad = icon ? 44 : 16;
+  const endPad = secure ? 46 : 16;
 
   return (
     <View style={styles.wrapper}>
@@ -68,7 +69,8 @@ export function Input({ label, error, hint, secure, icon, style, multiline, ...p
               borderRadius: radius.md,
               color: colors.text,
               textAlign: isRTL ? 'right' : 'left',
-              paddingHorizontal: isRTL ? trailingPad : leadingPad,
+              paddingLeft: isRTL ? endPad : startPad,
+              paddingRight: isRTL ? startPad : endPad,
               paddingVertical: multiline ? 14 : 14,
               minHeight: multiline ? 110 : 52,
               textAlignVertical: multiline ? 'top' : 'center',

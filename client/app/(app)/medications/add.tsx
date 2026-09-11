@@ -30,7 +30,18 @@ function normalizeDate(raw: string): string {
   return Number.isNaN(t) ? '' : new Date(t).toISOString().slice(0, 10);
 }
 
-const FORMS = ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Cream', 'Drops', 'Inhaler', 'Patch'] as const;
+// Value stored in the DB stays the canonical English slug; only the LABEL is
+// localized, so existing data keeps matching.
+const FORMS: { value: string; ar: string; en: string }[] = [
+  { value: 'Tablet', ar: 'أقراص', en: 'Tablet' },
+  { value: 'Capsule', ar: 'كبسولات', en: 'Capsule' },
+  { value: 'Syrup', ar: 'شراب', en: 'Syrup' },
+  { value: 'Injection', ar: 'حقن', en: 'Injection' },
+  { value: 'Cream', ar: 'كريم', en: 'Cream' },
+  { value: 'Drops', ar: 'قطرة', en: 'Drops' },
+  { value: 'Inhaler', ar: 'بخاخ', en: 'Inhaler' },
+  { value: 'Patch', ar: 'لصقة', en: 'Patch' },
+];
 
 export default function AddMedicationScreen() {
   const { t, isRTL, language } = useLanguage();
@@ -137,11 +148,11 @@ export default function AddMedicationScreen() {
         <Text style={[font.label, { color: colors.textSecondary, marginBottom: 8, textAlign: isRTL ? 'right' : 'left' }]}>{t('form')}</Text>
         <View style={styles.chips}>
           {FORMS.map((f) => {
-            const on = form.form === f;
+            const on = form.form === f.value;
             return (
               <TouchableOpacity
-                key={f}
-                onPress={() => set('form', on ? '' : f)}
+                key={f.value}
+                onPress={() => set('form', on ? '' : f.value)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
                 style={[
@@ -153,7 +164,9 @@ export default function AddMedicationScreen() {
                   },
                 ]}
               >
-                <Text style={[font.caption, { color: on ? colors.onPrimarySoft : colors.textSecondary, fontWeight: on ? '700' : '500' }]}>{f}</Text>
+                <Text style={[font.caption, { color: on ? colors.onPrimarySoft : colors.textSecondary, fontWeight: on ? '700' : '500' }]}>
+                  {language === 'ar' ? f.ar : f.en}
+                </Text>
               </TouchableOpacity>
             );
           })}

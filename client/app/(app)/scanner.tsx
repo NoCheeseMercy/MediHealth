@@ -207,7 +207,7 @@ export default function ScannerScreen() {
         {image ? (
           <View style={{ gap: 10 }}>
             <Button
-              title={extractMutation.isPending ? t('analyzing') : t('detected')}
+              title={extractMutation.isPending ? t('analyzing') : t('detectMedications')}
               onPress={() => extractMutation.mutate()}
               variant="soft"
               icon="search"

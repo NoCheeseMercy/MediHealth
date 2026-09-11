@@ -127,7 +127,11 @@ Return ONLY valid JSON with this structure:
   "safetyConcerns": ["..."],
   "recommendations": ["..."]
 }
-Be thorough but evidence-based. ${isAr ? 'Respond in Arabic.' : 'Respond in English.'}`;
+Be thorough but evidence-based. ${
+    isAr
+      ? 'You MUST write ALL text in Arabic — every description, advice, concern, and recommendation. Use proper medical Arabic terminology. Only drug names may remain in English.'
+      : 'You MUST write ALL text in English. Only drug names may differ.'
+  }`;
 
   const userMsg = `Medications: ${(medications as string[]).join(', ')}${symptoms ? `\nSymptoms: ${symptoms}` : ''}${notes ? `\nNotes: ${notes}` : ''}`;
 

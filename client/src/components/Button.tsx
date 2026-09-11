@@ -36,7 +36,7 @@ export function Button({
   fullWidth = true,
   icon,
 }: ButtonProps) {
-  const { colors, radius } = useTheme();
+  const { colors, radius, isRTL } = useTheme();
   const isDisabled = disabled || loading;
 
   const palette: Record<NonNullable<ButtonProps['variant']>, { bg: string; text: string; border: string }> = {
@@ -70,6 +70,7 @@ export function Button({
           height: heights[size],
           opacity: isDisabled ? 0.55 : 1,
           alignSelf: fullWidth ? 'stretch' : 'flex-start',
+          flexDirection: isRTL ? 'row-reverse' : 'row',
         },
         style,
       ]}

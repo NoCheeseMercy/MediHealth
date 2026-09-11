@@ -44,6 +44,7 @@ export const translations = {
     uploadImage: 'رفع صورة',
     analyzing: 'جاري التحليل...',
     detectedMedications: 'الأدوية المكتشفة',
+    detectMedications: 'تعرّف على الأدوية',
     detected: 'تم اكتشاف الدواء',
     // Analysis
     analysisResults: 'نتائج التحليل',
@@ -243,6 +244,7 @@ export const translations = {
     uploadImage: 'Upload Image',
     analyzing: 'Analyzing...',
     detectedMedications: 'Detected Medications',
+    detectMedications: 'Detect Medications',
     detected: 'Medication detected',
     // Analysis
     analysisResults: 'Analysis Results',
