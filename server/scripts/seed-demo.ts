@@ -1,13 +1,61 @@
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
+import { Client, Users, Query } from 'node-appwrite';
 import { db } from '../src/services/appwriteDb.service';
 
 const DEMO_EMAIL = 'demo@medihealth.app';
 const DEMO_PASSWORD = 'Demo123!';
 const DEMO_NAME = 'حساب تجريبي';
 
+/**
+ * The mobile client authenticates through Appwrite Auth, not the profiles
+ * collection — the original seed only wrote a bcrypt hash into user_profiles,
+ * which the Express flow read. Without an Auth user, "Enter Demo" fails with
+ * invalid credentials no matter how complete the profile data is.
+ */
+async function ensureAuthUser() {
+  const client = new Client()
+    .setEndpoint(process.env.APPWRITE_ENDPOINT || 'https://fra.cloud.appwrite.io/v1')
+    .setProject(process.env.APPWRITE_PROJECT_ID || '')
+    .setKey(process.env.APPWRITE_API_KEY || '');
+  const users = new Users(client);
+
+  try {
+    // Query strings must be Appwrite's `equal(...)` format — `email="..."` is
+    // invalid, throws, and (with the old catch) silently fell through to create.
+    const existing = await users.list([Query.equal('email', DEMO_EMAIL)]);
+    if (existing.total > 0) {
+      console.log('  Appwrite Auth user already exists');
+      return existing.users[0].$id;
+    }
+  } catch {
+    // fall through and attempt creation
+  }
+
+  try {
+    // node-appwrite v17 signature: create(userId, email?, phone?, password?, name?).
+    const user = await users.create('unique()', DEMO_EMAIL, null, DEMO_PASSWORD, DEMO_NAME);
+    console.log(`  Created Appwrite Auth user: ${user.$id}`);
+    return user.$id;
+  } catch (e: any) {
+    // Race with an existing account: user_already_exists means we're done.
+    if (e?.code === 409 || e?.type === 'user_already_exists') {
+      console.log('  Appwrite Auth user already exists');
+      return 'existing';
+    }
+    throw e;
+  }
+
+  // node-appwrite v17 signature: create(userId, email?, phone?, password?, name?).
+  const user = await users.create('unique()', DEMO_EMAIL, null, DEMO_PASSWORD, DEMO_NAME);
+  console.log(`  Created Appwrite Auth user: ${user.$id}`);
+  return user.$id;
+}
+
 async function main() {
   console.log('Seeding demo account...\n');
+
+  await ensureAuthUser();
 
   const existingProfiles = await db.listUserProfiles(DEMO_EMAIL);
   let profile = existingProfiles.find((p: any) => p.email === DEMO_EMAIL);
