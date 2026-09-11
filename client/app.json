@@ -36,6 +36,7 @@
     },
     "scheme": "medihealth",
     "plugins": [
+      "expo-speech-recognition",
       [
         "expo-image-picker",
         {

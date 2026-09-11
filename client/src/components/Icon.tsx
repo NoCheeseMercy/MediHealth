@@ -61,6 +61,7 @@ export const GLYPHS = {
   bookmark: 'bookmark-outline',
   tune: 'tune',
   download: 'download',
+  microphone: 'microphone',
 } as const;
 
 export type IconName = keyof typeof GLYPHS;

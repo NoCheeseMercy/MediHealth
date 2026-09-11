@@ -85,6 +85,16 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// expo-speech-recognition pulls androidx.core 1.17.0, which requires AGP 8.9.1+
+// while Expo SDK 53's version catalog pins AGP 8.8.2. androidx.core 1.15.0 has
+// no AGP floor and satisfies every consumer of the library in this project.
+configurations.all {
+  resolutionStrategy {
+    force 'androidx.core:core:1.15.0'
+    force 'androidx.core:core-ktx:1.15.0'
+  }
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 

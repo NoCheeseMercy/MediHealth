@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Platform } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, Platform, Switch } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../../src/contexts/LanguageContext';
@@ -7,6 +7,7 @@ import { useTheme } from '../../src/contexts/ThemeContext';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { authService } from '../../src/services/auth';
 import { ensureNotificationPermissions } from '../../src/services/notification';
+import { isNarrationEnabled, setNarrationEnabled, deviceNarrationLang } from '../../src/services/narration';
 import type { ThemeMode } from '../../src/theme/tokens';
 import { Card } from '../../src/components/Card';
 import { Icon, type IconName } from '../../src/components/Icon';
@@ -68,12 +69,17 @@ export default function SettingsScreen() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
 
+  const [narrOn, setNarrOn] = useState<boolean | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    isNarrationEnabled().then(setNarrOn);
+  }, []);
 
   const passwordScore = (p: string) => {
     let s = 0;
@@ -163,6 +169,37 @@ export default function SettingsScreen() {
             <View style={{ flex: 1 }}>
               <OptionPill icon="language" label="English" selected={language === 'en'} onPress={() => setLanguage('en')} />
             </View>
+          </View>
+        </Card>
+
+        {/* ── Narration ────────────────────────────────────────── */}
+        <SectionLabel>{t('voiceControl')}</SectionLabel>
+        <Card elevation="none" style={{ marginBottom: spacing.xl }}>
+          <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={[font.subtitle, { color: colors.text }]}>{t('voiceControl')}</Text>
+              <Text style={[font.caption, { color: colors.textSecondary, marginTop: 2, textAlign: isRTL ? 'right' : 'left' }]}>
+                {narrOn === null
+                  ? '…'
+                  : narrOn
+                    ? deviceNarrationLang() === 'ar'
+                      ? 'مفعّل — يقرأ الجولات بالعربية'
+                      : 'On — narrates in English'
+                    : deviceNarrationLang() === 'ar'
+                      ? 'موقوف'
+                      : 'Off'}
+              </Text>
+            </View>
+            <Switch
+              value={narrOn === true}
+              onValueChange={(v) => {
+                setNarrOn(v);
+                setNarrationEnabled(v);
+              }}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.surfaceRaised}
+              ios_backgroundColor={colors.border}
+            />
           </View>
         </Card>
 

@@ -178,7 +178,7 @@ export default function ScannerScreen() {
           <Text style={[font.caption, { color: colors.textMuted, textAlign: isRTL ? 'right' : 'left', marginBottom: spacing.md }]}>
             {language === 'ar'
               ? 'اضغط «تعرّف» لقراءة الأدوية من الصورة قبل التحليل.'
-              : 'Tap "Detect" to read the medications from the photo before analyzing.'}
+              : 'Tap "Identify medications" to read the medications from the photo before analyzing.'}
           </Text>
         ) : null}
 
@@ -207,7 +207,7 @@ export default function ScannerScreen() {
         {image ? (
           <View style={{ gap: 10 }}>
             <Button
-              title={extractMutation.isPending ? t('analyzing') : t('detectMedications')}
+              title={extractMutation.isPending ? t('analyzing') : t('scanIdentify')}
               onPress={() => extractMutation.mutate()}
               variant="soft"
               icon="search"

@@ -1,12 +1,25 @@
-import React from 'react';
-import { Redirect, Tabs } from 'expo-router';
-import { View, StyleSheet, Platform } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Redirect, Tabs, router } from 'expo-router';
+import { View, Text, StyleSheet, Platform, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Speech from 'expo-speech';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { useLanguage } from '../../src/contexts/LanguageContext';
 import { LoadingScreen } from '../../src/components/LoadingScreen';
 import { Icon, type IconName } from '../../src/components/Icon';
+import {
+  isNarrationEnabled,
+  isWalkthroughDone,
+  setWalkthroughDone,
+  setNarrationEnabled,
+  deviceNarrationLang,
+  narrText,
+  startListening,
+  stopListening,
+  matchCommand,
+  matchNavCommand,
+} from '../../src/services/narration';
 
 function TabIcon({ name, color, focused, activeBg }: { name: IconName; color: string; focused: boolean; activeBg: string }) {
   return (
@@ -18,11 +31,145 @@ function TabIcon({ name, color, focused, activeBg }: { name: IconName; color: st
   );
 }
 
+const NAV_ROUTES: Record<string, string> = {
+  scan: '/(app)/scanner',
+  medications: '/(app)/medications',
+  reminders: '/(app)/reminders',
+  history: '/(app)/history',
+  profile: '/(app)/profile',
+  analyze: '/(app)/analyze',
+  dashboard: '/(app)',
+};
+
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth();
   const { colors, isRTL } = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
+
+  const [listening, setListening] = useState(false);
+  const [walkActive, setWalkActive] = useState(false);
+
+  const runIdRef = useRef(0);
+  const idxRef = useRef(0);
+  const walkActiveRef = useRef(false);
+  const stopListenRef = useRef<(() => void) | null>(null);
+
+  const narrLang = deviceNarrationLang();
+
+  const finishWalkthrough = useCallback((askDisable: boolean) => {
+    runIdRef.current += 1;
+    walkActiveRef.current = false;
+    setWalkActive(false);
+    void setWalkthroughDone();
+    if (askDisable) {
+      Speech.speak(narrText('narrEnd'), { language: narrLang === 'ar' ? 'ar-SA' : 'en-US' });
+      // The disable question fires after a beat so it doesn't clip narrEnd.
+      setTimeout(() => {
+        Alert.alert(narrText('narrAskDisable'), undefined, [
+          { text: narrText('narrKeep'), style: 'cancel' },
+          {
+            text: narrText('narrDisable'),
+            style: 'destructive',
+            onPress: () => void setNarrationEnabled(false),
+          },
+        ]);
+      }, 4200);
+    }
+  }, [narrLang]);
+
+  const speakStep = useCallback((i: number) => {
+    const steps = [
+      narrText('narrIntro'),
+      narrText('narrDash'),
+      narrText('narrScan'),
+      narrText('narrMeds'),
+      narrText('narrRem'),
+      narrText('narrHist'),
+      narrText('narrAnalyze'),
+      narrText('narrVoiceHint'),
+    ];
+    if (i >= steps.length) {
+      finishWalkthrough(true);
+      return;
+    }
+    idxRef.current = i;
+    Speech.speak(steps[i], {
+      language: narrLang === 'ar' ? 'ar-SA' : 'en-US',
+      rate: narrLang === 'ar' ? 0.92 : 0.98,
+      onDone: () => {
+        // runId guard: a manual next/stop/repeat invalidates stale chains.
+        if (walkActiveRef.current) speakStep(i + 1);
+      },
+      onStopped: () => { /* manual control path */ },
+    });
+  }, [finishWalkthrough, narrLang]);
+
+  // First-open walkthrough: device-language narration of everything the app does.
+  useEffect(() => {
+    if (isLoading || !isAuthenticated) return;
+    let cancelled = false;
+    (async () => {
+      const [enabled, done] = await Promise.all([isNarrationEnabled(), isWalkthroughDone()]);
+      if (cancelled || !enabled || done) return;
+      walkActiveRef.current = true;
+      setWalkActive(true);
+      // Small delay so the dashboard's first paint settles before speech starts.
+      setTimeout(() => { if (!cancelled && walkActiveRef.current) speakStep(0); }, 700);
+    })();
+    return () => {
+      cancelled = true;
+      Speech.stop();
+    };
+  }, [isAuthenticated, isLoading, speakStep]);
+
+  useEffect(() => () => {
+    stopListenRef.current?.();
+    stopListening();
+    Speech.stop();
+  }, []);
+
+  const toggleListening = () => {
+    if (stopListenRef.current) {
+      stopListenRef.current();
+      stopListenRef.current = null;
+      setListening(false);
+      return;
+    }
+    setListening(true);
+    stopListenRef.current = startListening({
+      lang: narrLang,
+      onFinal: (transcript) => {
+        if (walkActiveRef.current) {
+          const cmd = matchCommand(transcript);
+          if (cmd === 'next') {
+            runIdRef.current += 1;
+            Speech.stop();
+            speakStep(idxRef.current + 1);
+          } else if (cmd === 'repeat') {
+            runIdRef.current += 1;
+            Speech.stop();
+            speakStep(idxRef.current);
+          } else if (cmd === 'stop') {
+            finishWalkthrough(false);
+          }
+          return;
+        }
+        const nav = matchNavCommand(transcript);
+        if (nav && NAV_ROUTES[nav]) {
+          router.push(NAV_ROUTES[nav] as never);
+        }
+      },
+      onError: (message) => {
+        if (message === 'mic-permission' || /recognized|unavailable|service/i.test(message)) {
+          setListening(false);
+          stopListenRef.current?.();
+          stopListenRef.current = null;
+          Alert.alert(narrText('narrMicError'));
+        }
+      },
+    });
+  };
 
   if (isLoading) return <LoadingScreen />;
   if (!isAuthenticated) return <Redirect href="/login" />;
@@ -38,49 +185,79 @@ export default function AppLayout() {
   ];
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarItemStyle: { paddingTop: 6 },
-        tabBarLabelStyle: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0, marginBottom: 4 },
-        tabBarStyle: {
-          backgroundColor: colors.backgroundElevated,
-          borderTopColor: colors.border,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          height: tabHeight,
-          paddingTop: 6,
-          paddingBottom: insets.bottom,
-          elevation: 10,
-          shadowColor: '#000',
-          shadowOpacity: 0.06,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: -2 },
-        },
-      }}
-    >
-      {screens.map((s) => (
-        <Tabs.Screen
-          key={s.name}
-          name={s.name}
-          options={{
-            title: s.label,
-            tabBarLabel: s.label,
-            tabBarIcon: ({ color, focused }) => (
-              <TabIcon name={s.icon} color={color} focused={focused} activeBg={colors.primarySoft} />
-            ),
-          }}
-        />
-      ))}
+    <View style={{ flex: 1 }}>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textMuted,
+          tabBarItemStyle: { paddingTop: 6 },
+          tabBarLabelStyle: { fontSize: 10.5, fontWeight: '700', letterSpacing: 0, marginBottom: 4 },
+          tabBarStyle: {
+            backgroundColor: colors.backgroundElevated,
+            borderTopColor: colors.border,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            height: tabHeight,
+            paddingTop: 6,
+            paddingBottom: insets.bottom,
+            elevation: 10,
+            shadowColor: '#000',
+            shadowOpacity: 0.06,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: -2 },
+          },
+        }}
+      >
+        {screens.map((s) => (
+          <Tabs.Screen
+            key={s.name}
+            name={s.name}
+            options={{
+              title: s.label,
+              tabBarLabel: s.label,
+              tabBarIcon: ({ color, focused }) => (
+                <TabIcon name={s.icon} color={color} focused={focused} activeBg={colors.primarySoft} />
+              ),
+            }}
+          />
+        ))}
 
-      {/* Detail & flow screens live in this group but stay off the tab bar. */}
-      {['analysis/[id]', 'medications/[id]', 'medications/add', 'reminders', 'settings', 'analyze'].map((name) => (
-        <Tabs.Screen key={name} name={name} options={{ href: null }} />
-      ))}
+        {/* Detail & flow screens live in this group but stay off the tab bar. */}
+        {['analysis/[id]', 'medications/[id]', 'medications/add', 'reminders', 'settings', 'analyze'].map((name) => (
+          <Tabs.Screen key={name} name={name} options={{ href: null }} />
+        ))}
 
-      <Tabs.Screen name="+not-found" options={{ href: null }} />
-    </Tabs>
+        <Tabs.Screen name="+not-found" options={{ href: null }} />
+      </Tabs>
+
+      {/* Voice-control mic, floating above the tab bar. Also drives walkthrough
+          next/stop/repeat while the first-open tour is playing. */}
+      <TouchableOpacity
+        onPress={toggleListening}
+        accessibilityRole="button"
+        accessibilityLabel={t('voiceControl')}
+        accessibilityState={{ busy: listening }}
+        style={[
+          styles.micFab,
+          {
+            bottom: tabHeight + 10,
+            backgroundColor: listening ? colors.primary : colors.backgroundElevated,
+            borderColor: listening ? colors.primary : colors.borderStrong,
+          },
+        ]}
+      >
+        <Icon name="microphone" size={21} color={listening ? colors.onPrimary : colors.textSecondary} />
+      </TouchableOpacity>
+
+      {listening ? (
+        <View
+          pointerEvents="none"
+          style={[styles.listeningPill, { bottom: tabHeight + 66, backgroundColor: colors.overlay }]}
+        >
+          <Text style={styles.listeningText}>{narrText('narrListening')}</Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -91,4 +268,27 @@ const styles = StyleSheet.create({
     width: 46,
     height: 30,
   },
+  micFab: {
+    position: 'absolute',
+    alignSelf: 'center',
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  listeningPill: {
+    position: 'absolute',
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  listeningText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
 });
