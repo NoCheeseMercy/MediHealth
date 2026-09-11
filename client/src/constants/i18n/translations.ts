@@ -163,6 +163,7 @@ export const translations = {
     narrDisable: 'إيقاف',
     narrListening: 'أستمع…',
     narrMicError: 'التحكم الصوتي غير متوفر على هذا الجهاز.',
+    narrLogin: 'هذه شاشة تسجيل الدخول. أدخل بريدك الإلكتروني وكلمة المرور ثم اضغط تسجيل الدخول، أو استخدم الحساب التجريبي بالأسفل بالضغط على زر الميكروفون وقول: استخدم الحساب التجريبي.',
     scanIdentify: 'تعرّف على الأدوية',
     // UI overhaul — empty & honesty states
     notAssessed: 'غير مُقيَّم',
@@ -380,6 +381,7 @@ export const translations = {
     narrDisable: 'Turn off',
     narrListening: 'Listening…',
     narrMicError: 'Voice control is not available on this device.',
+    narrLogin: 'This is the sign-in screen. Enter your email and password, then tap Sign in — or say "use the demo account" with the microphone button to try the demo below.',
     scanIdentify: 'Identify medications',
     // UI overhaul — empty & honesty states
     notAssessed: 'Not assessed',

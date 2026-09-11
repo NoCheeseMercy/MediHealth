@@ -1,23 +1,17 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Redirect, Tabs, router } from 'expo-router';
 import { View, Text, StyleSheet, Platform, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Speech from 'expo-speech';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { useLanguage } from '../../src/contexts/LanguageContext';
 import { LoadingScreen } from '../../src/components/LoadingScreen';
 import { Icon, type IconName } from '../../src/components/Icon';
 import {
-  isNarrationEnabled,
-  isWalkthroughDone,
-  setWalkthroughDone,
-  setNarrationEnabled,
   deviceNarrationLang,
   narrText,
   startListening,
   stopListening,
-  matchCommand,
   matchNavCommand,
 } from '../../src/services/narration';
 
@@ -48,85 +42,14 @@ export default function AppLayout() {
   const insets = useSafeAreaInsets();
 
   const [listening, setListening] = useState(false);
-  const [walkActive, setWalkActive] = useState(false);
 
-  const runIdRef = useRef(0);
-  const idxRef = useRef(0);
-  const walkActiveRef = useRef(false);
   const stopListenRef = useRef<(() => void) | null>(null);
 
   const narrLang = deviceNarrationLang();
 
-  const finishWalkthrough = useCallback((askDisable: boolean) => {
-    runIdRef.current += 1;
-    walkActiveRef.current = false;
-    setWalkActive(false);
-    void setWalkthroughDone();
-    if (askDisable) {
-      Speech.speak(narrText('narrEnd'), { language: narrLang === 'ar' ? 'ar-SA' : 'en-US' });
-      // The disable question fires after a beat so it doesn't clip narrEnd.
-      setTimeout(() => {
-        Alert.alert(narrText('narrAskDisable'), undefined, [
-          { text: narrText('narrKeep'), style: 'cancel' },
-          {
-            text: narrText('narrDisable'),
-            style: 'destructive',
-            onPress: () => void setNarrationEnabled(false),
-          },
-        ]);
-      }, 4200);
-    }
-  }, [narrLang]);
-
-  const speakStep = useCallback((i: number) => {
-    const steps = [
-      narrText('narrIntro'),
-      narrText('narrDash'),
-      narrText('narrScan'),
-      narrText('narrMeds'),
-      narrText('narrRem'),
-      narrText('narrHist'),
-      narrText('narrAnalyze'),
-      narrText('narrVoiceHint'),
-    ];
-    if (i >= steps.length) {
-      finishWalkthrough(true);
-      return;
-    }
-    idxRef.current = i;
-    Speech.speak(steps[i], {
-      language: narrLang === 'ar' ? 'ar-SA' : 'en-US',
-      rate: narrLang === 'ar' ? 0.92 : 0.98,
-      onDone: () => {
-        // runId guard: a manual next/stop/repeat invalidates stale chains.
-        if (walkActiveRef.current) speakStep(i + 1);
-      },
-      onStopped: () => { /* manual control path */ },
-    });
-  }, [finishWalkthrough, narrLang]);
-
-  // First-open walkthrough: device-language narration of everything the app does.
-  useEffect(() => {
-    if (isLoading || !isAuthenticated) return;
-    let cancelled = false;
-    (async () => {
-      const [enabled, done] = await Promise.all([isNarrationEnabled(), isWalkthroughDone()]);
-      if (cancelled || !enabled || done) return;
-      walkActiveRef.current = true;
-      setWalkActive(true);
-      // Small delay so the dashboard's first paint settles before speech starts.
-      setTimeout(() => { if (!cancelled && walkActiveRef.current) speakStep(0); }, 700);
-    })();
-    return () => {
-      cancelled = true;
-      Speech.stop();
-    };
-  }, [isAuthenticated, isLoading, speakStep]);
-
   useEffect(() => () => {
     stopListenRef.current?.();
     stopListening();
-    Speech.stop();
   }, []);
 
   const toggleListening = () => {
@@ -140,21 +63,6 @@ export default function AppLayout() {
     stopListenRef.current = startListening({
       lang: narrLang,
       onFinal: (transcript) => {
-        if (walkActiveRef.current) {
-          const cmd = matchCommand(transcript);
-          if (cmd === 'next') {
-            runIdRef.current += 1;
-            Speech.stop();
-            speakStep(idxRef.current + 1);
-          } else if (cmd === 'repeat') {
-            runIdRef.current += 1;
-            Speech.stop();
-            speakStep(idxRef.current);
-          } else if (cmd === 'stop') {
-            finishWalkthrough(false);
-          }
-          return;
-        }
         const nav = matchNavCommand(transcript);
         if (nav && NAV_ROUTES[nav]) {
           router.push(NAV_ROUTES[nav] as never);

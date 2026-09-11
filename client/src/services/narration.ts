@@ -1,11 +1,18 @@
 import * as Speech from 'expo-speech';
 import * as Localization from 'expo-localization';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import * as FileSystem from 'expo-file-system';
 import { ExpoSpeechRecognitionModule, type ExpoSpeechRecognitionResultEvent } from 'expo-speech-recognition';
 import { translations } from '../constants/i18n/translations';
 
 /**
  * Narration + voice control.
+ *
+ * Narration audio comes from the Worker's /tts route (ElevenLabs, key held
+ * server-side) and is cached on disk per sentence. Any failure — no proxy
+ * configured, no credits, offline — falls back to the on-device TTS engine so
+ * the walkthrough never goes silent.
  *
  * Narration language is the DEVICE language (not the app language) per
  * requirement — a device set to Arabic narrates in Arabic even if the user
@@ -35,7 +42,7 @@ export async function isNarrationEnabled(): Promise<boolean> {
 
 export async function setNarrationEnabled(on: boolean) {
   await AsyncStorage.setItem(KEYS.enabled, String(on));
-  if (!on) Speech.stop();
+  if (!on) stopSpeaking();
 }
 
 export async function isWalkthroughDone(): Promise<boolean> {
@@ -46,41 +53,135 @@ export async function setWalkthroughDone() {
   await AsyncStorage.setItem(KEYS.walkthroughDone, 'true');
 }
 
-export function speak(text: string, lang: NarrationLang = deviceNarrationLang()) {
-  if (!text) return;
-  Speech.stop();
-  Speech.speak(text, {
-    language: lang === 'ar' ? 'ar-SA' : 'en-US',
-    rate: lang === 'ar' ? 0.92 : 0.98,
-    pitch: 1.0,
+// ── High-quality TTS: ElevenLabs via the Worker proxy ───────────────
+
+const audioModeReady = setAudioModeAsync({ playsInSilentMode: true }).catch(() => undefined);
+
+/** djb2 — short cache-safe filename per (lang, text) pair. */
+function hash32(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/** Cancels the in-flight/playing utterance and resolves its promise. */
+let activeAbort: (() => void) | null = null;
+/** Set by stopSpeaking() to break running speakSequence loops. */
+let seqAborted = false;
+
+async function fetchTtsAudio(text: string, lang: NarrationLang): Promise<string> {
+  const base = process.env.EXPO_PUBLIC_AI_PROXY_URL;
+  if (!base) throw new Error('no-proxy');
+
+  const fileUri = `${FileSystem.cacheDirectory || ''}mh-tts-${hash32(`${lang}:${text}`)}.mp3`;
+  const info = await FileSystem.getInfoAsync(fileUri);
+  if (info.exists) return fileUri;
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const shared = process.env.EXPO_PUBLIC_AI_SHARED_SECRET;
+  if (shared) headers['x-mh-secret'] = shared;
+
+  // Manual AbortController timer — AbortSignal.timeout does not exist in Hermes.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 45000);
+  let res: Response;
+  try {
+    res = await fetch(`${base.replace(/\/+$/, '')}/tts`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ text, lang }),
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!res.ok) throw new Error(`tts-http-${res.status}`);
+  const data = (await res.json()) as { audio?: string };
+  if (!data.audio) throw new Error('tts-empty');
+  await FileSystem.writeAsStringAsync(fileUri, data.audio, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return fileUri;
+}
+
+/** Plays one cached MP3; resolves on finish or when aborted. */
+function playFile(fileUri: string): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      activeAbort = null;
+      try {
+        sub.remove();
+      } catch { /* already removed */ }
+      try {
+        p.release();
+      } catch { /* already released */ }
+      resolve();
+    };
+    const p = createAudioPlayer(fileUri);
+    const sub = p.addListener('playbackStatusUpdate', (st: { didJustFinish?: boolean }) => {
+      if (st?.didJustFinish) finish();
+    });
+    activeAbort = finish;
+    p.play();
   });
 }
 
+/**
+ * Speaks one utterance: ElevenLabs audio when possible, device TTS otherwise.
+ * Resolves when the utterance finishes or is superseded/stopped.
+ */
+export async function speak(text: string, lang: NarrationLang = deviceNarrationLang()): Promise<void> {
+  if (!text) return;
+  // Supersede anything already speaking.
+  if (activeAbort) {
+    const a = activeAbort;
+    activeAbort = null;
+    a();
+  }
+  Speech.stop();
+  try {
+    await audioModeReady;
+    const fileUri = await fetchTtsAudio(text, lang);
+    await playFile(fileUri);
+  } catch {
+    // Fallback: on-device engine (no proxy, no credits, offline, file error).
+    await new Promise<void>((resolve) => {
+      Speech.speak(text, {
+        language: lang === 'ar' ? 'ar-SA' : 'en-US',
+        rate: lang === 'ar' ? 0.92 : 0.98,
+        onDone: () => resolve(),
+        onStopped: () => resolve(),
+        onError: () => resolve(),
+      });
+    });
+  }
+}
+
 export function stopSpeaking() {
+  seqAborted = true;
+  if (activeAbort) {
+    const a = activeAbort;
+    activeAbort = null;
+    a();
+  }
   Speech.stop();
 }
 
-/**
- * Narrate a sequence one sentence at a time. `onStopped` halts the chain (user
- * disabled narration or navigated away); only a natural `onDone` continues.
- */
-export function speakSequence(texts: string[], lang: NarrationLang = deviceNarrationLang(), onAllDone?: () => void) {
-  const items = texts.filter(Boolean);
-  let i = 0;
-  const next = () => {
-    if (i >= items.length) {
-      onAllDone?.();
-      return;
-    }
-    const text = items[i++];
-    Speech.speak(text, {
-      language: lang === 'ar' ? 'ar-SA' : 'en-US',
-      rate: lang === 'ar' ? 0.92 : 0.98,
-      onDone: next,
-      onStopped: () => { /* chain intentionally halted */ },
-    });
-  };
-  next();
+/** Narrate a sequence one sentence at a time; breakable by stopSpeaking(). */
+export async function speakSequence(
+  texts: string[],
+  lang: NarrationLang = deviceNarrationLang(),
+  onAllDone?: () => void,
+) {
+  seqAborted = false;
+  for (const t of texts.filter(Boolean)) {
+    if (seqAborted) return;
+    await speak(t, lang);
+  }
+  if (!seqAborted) onAllDone?.();
 }
 
 /** Lookup in the DEVICE narration language, independent of the app UI language. */
@@ -123,6 +224,72 @@ export function matchNavCommand(transcript: string): string | null {
     if (c.words.some((w) => t.includes(w))) return c.key;
   }
   return null;
+}
+
+// ── AI command interpretation ───────────────────────────────────────
+
+export interface VoiceAction {
+  action: 'navigate' | 'walk_next' | 'walk_repeat' | 'walk_stop' | 'demo_login' | 'unknown';
+  target?: string;
+}
+
+/**
+ * Interprets a transcript through the Worker's AI /voice route (bilingual,
+ * dialect-tolerant). Falls back to local keyword matching when the proxy is
+ * unreachable, so the mic still navigates offline.
+ */
+export async function interpretCommand(transcript: string, narrating: boolean): Promise<VoiceAction> {
+  const base = process.env.EXPO_PUBLIC_AI_PROXY_URL;
+  if (base) {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const shared = process.env.EXPO_PUBLIC_AI_SHARED_SECRET;
+      if (shared) headers['x-mh-secret'] = shared;
+      // Hermes has no AbortSignal.timeout — manual controller timer.
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      const res = await fetch(`${base.replace(/\/+$/, '')}/voice`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ transcript }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = (await res.json()) as VoiceAction;
+        if (data?.action) return data;
+      }
+    } catch {
+      /* fall through to local matching */
+    }
+  }
+
+  const cmd = matchCommand(transcript);
+  if (cmd === 'next') return { action: narrating ? 'walk_next' : 'unknown' };
+  if (cmd === 'repeat') return { action: 'walk_repeat' };
+  if (cmd === 'stop') return { action: 'walk_stop' };
+  if (!narrating) {
+    const nav = matchNavCommand(transcript);
+    if (nav) return { action: 'navigate', target: nav };
+  }
+  if (/demo|تجريبي|تجربة/i.test(transcript)) return { action: 'demo_login' };
+  return { action: 'unknown' };
+}
+
+// ── Walkthrough → sign-in handoff ───────────────────────────────────
+
+const PENDING_LOGIN_KEY = 'narration_pending_login';
+
+/** Onboarding calls this when the user keeps narration on at the tour's end. */
+export async function setPendingLoginNarration() {
+  await AsyncStorage.setItem(PENDING_LOGIN_KEY, 'true');
+}
+
+/** Login consumes the flag once; true means "narrate the sign-in screen now". */
+export async function consumePendingLoginNarration(): Promise<boolean> {
+  const v = (await AsyncStorage.getItem(PENDING_LOGIN_KEY)) === 'true';
+  if (v) await AsyncStorage.removeItem(PENDING_LOGIN_KEY);
+  return v;
 }
 
 // ── Listening loop ──────────────────────────────────────────────────

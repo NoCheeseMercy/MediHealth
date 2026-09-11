@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,18 @@ import { useTheme } from '../src/contexts/ThemeContext';
 import { Input } from '../src/components/Input';
 import { Button } from '../src/components/Button';
 import { ErrorState } from '../src/components/ErrorState';
+import { Icon } from '../src/components/Icon';
+import {
+  consumePendingLoginNarration,
+  deviceNarrationLang,
+  interpretCommand,
+  isNarrationEnabled,
+  narrText,
+  speakSequence,
+  startListening,
+  stopListening,
+  stopSpeaking,
+} from '../src/services/narration';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -30,6 +42,52 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [listening, setListening] = useState(false);
+  const stopListenRef = useRef<(() => void) | null>(null);
+
+  // Guided arrival: the walkthrough hands off here — narrate sign-in once.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const pending = await consumePendingLoginNarration();
+      if (cancelled || !pending || !(await isNarrationEnabled())) return;
+      setTimeout(() => {
+        if (!cancelled) void speakSequence([narrText('narrLogin')], deviceNarrationLang());
+      }, 700);
+    })();
+    return () => {
+      cancelled = true;
+      stopSpeaking();
+      stopListenRef.current?.();
+      stopListening();
+    };
+  }, []);
+
+  const toggleListening = () => {
+    if (stopListenRef.current) {
+      stopListenRef.current();
+      stopListenRef.current = null;
+      setListening(false);
+      return;
+    }
+    setListening(true);
+    stopListenRef.current = startListening({
+      lang: deviceNarrationLang(),
+      onFinal: (transcript) => {
+        void interpretCommand(transcript, false).then((c) => {
+          if (c.action === 'demo_login') enterDemo();
+        });
+      },
+      onError: (message) => {
+        if (message === 'mic-permission' || /recognized|unavailable|service/i.test(message)) {
+          setListening(false);
+          stopListenRef.current?.();
+          stopListenRef.current = null;
+          Alert.alert(narrText('narrMicError'));
+        }
+      },
+    });
+  };
 
   const handleLogin = async () => {
     setError('');
@@ -140,6 +198,28 @@ export default function LoginScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Voice control on sign-in: "use the demo account" signs in by voice. */}
+      <TouchableOpacity
+        onPress={toggleListening}
+        accessibilityRole="button"
+        accessibilityLabel={narrText('voiceControl')}
+        accessibilityState={{ busy: listening }}
+        style={[
+          styles.micFab,
+          {
+            backgroundColor: listening ? colors.primary : colors.backgroundElevated,
+            borderColor: listening ? colors.primary : colors.borderStrong,
+          },
+        ]}
+      >
+        <Icon name="microphone" size={20} color={listening ? colors.onPrimary : colors.textSecondary} />
+      </TouchableOpacity>
+      {listening ? (
+        <View pointerEvents="none" style={[styles.listeningPill, { backgroundColor: colors.overlay }]}>
+          <Text style={styles.listeningText}>{narrText('narrListening')}</Text>
+        </View>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -170,4 +250,29 @@ const styles = StyleSheet.create({
   divider: { alignItems: 'center', marginVertical: 22 },
   line: { flex: 1, height: StyleSheet.hairlineWidth },
   footer: { alignItems: 'center' },
+  micFab: {
+    position: 'absolute',
+    alignSelf: 'center',
+    bottom: 28,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  listeningPill: {
+    position: 'absolute',
+    alignSelf: 'center',
+    bottom: 84,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  listeningText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
 });
