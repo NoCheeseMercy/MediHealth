@@ -1,19 +1,13 @@
-# Omit everything by default, then re-include source
-*
-!.gitignore
-!.easignore
-!package.json
-!package-lock.json
-!app.json
-!metro.config.js
-!tailwind.config.js
-!nativewind-env.d.ts
-!expo-env.d.ts
-!babel.config.js
-!tsconfig.json
-!app/
-!app/**/*
-!src/
-!src/**/*
-!assets/
-!assets/**/*
+# Keep the EAS upload small, but include every source/config file Metro needs.
+node_modules/
+.expo/
+.expo-run/
+dist/
+android/.gradle/
+android/.cxx/
+android/app/build/
+android/build/
+*.log
+*.apk
+*.aab
+*.apks

@@ -1,6 +1,6 @@
 import 'dotenv/config';
-import { Client, Databases, ID, Permission, Role } from 'node-appwrite';
-import { DB_ID, COLLECTIONS } from '../src/lib/appwrite.js';
+import { Client, Databases, Permission, Role } from 'node-appwrite';
+import { DB_ID, COLLECTIONS } from '../src/lib/appwrite';
 
 const client = new Client()
   .setEndpoint(process.env.APPWRITE_ENDPOINT!)
@@ -9,17 +9,75 @@ const client = new Client()
 
 const databases = new Databases(client);
 
-async function ensureCollection(
-  id: string,
-  name: string,
-  attributes: Array<{
-    key: string;
-    type: string;
-    size?: number;
-    required?: boolean;
-    default?: unknown;
-  }>
-) {
+type AttributeConfig = {
+  key: string;
+  type: string;
+  size?: number;
+  required?: boolean;
+  default?: unknown;
+};
+
+const waitForAttributes = () => new Promise((resolve) => setTimeout(resolve, 3000));
+
+async function ensureAttribute(collectionId: string, attr: AttributeConfig) {
+  try {
+    await databases.getAttribute(DB_ID, collectionId, attr.key);
+    console.log(`  ✓ Attribute exists: ${attr.key}`);
+    return;
+  } catch {
+    // create below
+  }
+
+  try {
+    if (attr.type === 'string') {
+      await databases.createStringAttribute(
+        DB_ID,
+        collectionId,
+        attr.key,
+        attr.size || 255,
+        attr.required ?? false,
+        attr.default as string | undefined
+      );
+    } else if (attr.type === 'integer') {
+      await databases.createIntegerAttribute(
+        DB_ID,
+        collectionId,
+        attr.key,
+        attr.required ?? false,
+        undefined,
+        undefined,
+        attr.default as number | undefined
+      );
+    } else if (attr.type === 'boolean') {
+      await databases.createBooleanAttribute(
+        DB_ID,
+        collectionId,
+        attr.key,
+        attr.required ?? false,
+        attr.default as boolean | undefined
+      );
+    }
+    console.log(`  + Attribute: ${attr.key}`);
+  } catch {
+    console.log(`  ~ Attribute ${attr.key} may already be provisioning`);
+  }
+}
+
+async function ensureEmailIndex() {
+  try {
+    await databases.getIndex(DB_ID, COLLECTIONS.USER_PROFILES, 'email_unique');
+    console.log('  ✓ Index exists: email_unique');
+  } catch {
+    try {
+      await databases.createIndex(DB_ID, COLLECTIONS.USER_PROFILES, 'email_unique', 'unique', ['email']);
+      console.log('  + Index: email_unique');
+    } catch {
+      console.log('  ~ Index email_unique may already be provisioning');
+    }
+  }
+}
+
+async function ensureCollection(id: string, name: string, attributes: AttributeConfig[]) {
   try {
     await databases.getCollection(DB_ID, id);
     console.log(`✓ Collection exists: ${id}`);
@@ -35,46 +93,13 @@ async function ensureCollection(
       Permission.delete(Role.any()),
     ]);
     console.log(`+ Created collection: ${id}`);
-
-    for (const attr of attributes) {
-      try {
-        if (attr.type === 'string') {
-          await databases.createStringAttribute(
-            DB_ID,
-            id,
-            attr.key,
-            attr.size || 255,
-            attr.required ?? false,
-            attr.default as string | undefined
-          );
-        } else if (attr.type === 'integer') {
-          await databases.createIntegerAttribute(
-            DB_ID,
-            id,
-            attr.key,
-            attr.required ?? false,
-            undefined,
-            undefined,
-            attr.default as number | undefined
-          );
-        } else if (attr.type === 'boolean') {
-          await databases.createBooleanAttribute(
-            DB_ID,
-            id,
-            attr.key,
-            attr.required ?? false,
-            attr.default as boolean | undefined
-          );
-        }
-        console.log(`  + Attribute: ${attr.key}`);
-      } catch (e) {
-        console.log(`  ~ Attribute ${attr.key} may exist`);
-      }
-    }
-
-    // Wait for attributes to be ready
-    await new Promise((r) => setTimeout(r, 3000));
+    await waitForAttributes();
   }
+
+  for (const attr of attributes) {
+    await ensureAttribute(id, attr);
+  }
+  await waitForAttributes();
 }
 
 async function main() {
@@ -84,7 +109,9 @@ async function main() {
     { key: 'email', type: 'string', size: 255, required: true },
     { key: 'fullName', type: 'string', size: 255, required: true },
     { key: 'preferredLanguage', type: 'string', size: 10, required: false, default: 'ar' },
+    { key: 'passwordHash', type: 'string', size: 255, required: false },
   ]);
+  await ensureEmailIndex();
 
   await ensureCollection(COLLECTIONS.USER_MEDICATIONS, 'User Medications', [
     { key: 'userId', type: 'string', size: 64, required: true },

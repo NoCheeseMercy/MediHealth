@@ -1,20 +1,10 @@
 import { Router } from 'express';
+import { authenticate } from '../middleware/auth';
 import { db } from '../services/appwriteDb.service';
-import { users } from '../lib/appwrite';
 
 const router = Router();
 
-router.use((req, res, next) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Authentication required' });
-  try {
-    const decoded = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString()) as { userId: string };
-    (req as any).userId = decoded.userId;
-    next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-});
+router.use(authenticate);
 
 router.get('/', async (req: any, res: any) => {
   try {
@@ -41,10 +31,7 @@ router.patch('/', async (req: any, res: any) => {
     const { fullName, preferredLanguage } = req.body;
     const data: Record<string, unknown> = {};
 
-    if (fullName) {
-      data.fullName = fullName;
-      await users.updateName(req.userId!, fullName as string);
-    }
+    if (fullName) data.fullName = fullName;
     if (preferredLanguage) data.preferredLanguage = preferredLanguage;
 
     const profile = await db.updateUserProfile(req.userId, data);
@@ -74,6 +61,19 @@ router.get('/dashboard', async (req: any, res: any) => {
     ]);
 
     const activeMeds = (medications as any[]).filter((m: any) => m.isActive !== false);
+    const medById = new Map((medications as any[]).map((m: any) => [m.$id, m]));
+
+    const upcomingReminders = (reminders as any[])
+      .filter((r: any) => r.isActive !== false)
+      .slice(0, 5)
+      .map((r: any) => {
+        const med = r.medicationId ? medById.get(r.medicationId) : null;
+        return {
+          ...r,
+          id: r.$id,
+          medication: med ? { id: med.$id, name: med.name, dosage: med.dosage } : null,
+        };
+      });
 
     const scores = reports.map((r: any) => Number(r.safetyScore) || 70);
     const avgScore = scores.length > 0
@@ -82,7 +82,7 @@ router.get('/dashboard', async (req: any, res: any) => {
 
     res.json({
       activeMedications: activeMeds.slice(0, 5),
-      upcomingReminders: (reminders as any[]).filter((r: any) => r.isActive !== false).slice(0, 5),
+      upcomingReminders,
       recentAnalyses: reports.slice(0, 3).map((r: any) => ({
         id: r.$id,
         medications: db.parseJsonField(r.medications, { names: [] }),

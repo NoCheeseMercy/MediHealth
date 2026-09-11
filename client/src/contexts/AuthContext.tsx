@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api } from '../services/api';
+import { useQueryClient } from '@tanstack/react-query';
 import { authService, type User } from '../services/auth';
+import { api } from '../services/api';
 
 interface AuthContextType {
   user: User | null;
@@ -19,29 +20,26 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  const refreshUser = useCallback(async () => {
-    try {
-      const data = await api.get('/auth/me');
-      setUser(data.user);
-      await AsyncStorage.setItem('user', JSON.stringify(data.user));
-    } catch {
-      setUser(null);
-      await api.setToken(null);
-    }
-  }, []);
+  const clearSession = useCallback(async () => {
+    setUser(null);
+    await AsyncStorage.removeItem('user');
+    await AsyncStorage.removeItem('appwrite_user');
+    queryClient.clear();
+  }, [queryClient]);
 
   useEffect(() => {
     (async () => {
       await api.init();
-      const stored = await AsyncStorage.getItem('user');
-      if (api.hasToken() && stored) {
-        setUser(JSON.parse(stored));
-        await refreshUser();
+      const storedUser = await AsyncStorage.getItem('user');
+      const hasSession = await AsyncStorage.getItem('appwrite_user');
+      if (hasSession && storedUser) {
+        setUser(JSON.parse(storedUser));
       }
       setIsLoading(false);
     })();
-  }, [refreshUser]);
+  }, []);
 
   const login = async (email: string, password: string) => {
     const data = await authService.login(email, password);
@@ -50,23 +48,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (email: string, password: string, fullName: string, lang = 'ar') => {
-    const data = await api.post('/auth/register', {
-      email,
-      password,
-      fullName,
-      preferredLanguage: lang,
-    });
-    await api.setToken(data.token);
+    const data = await authService.register(email, password, fullName, lang);
     setUser(data.user);
     await AsyncStorage.setItem('user', JSON.stringify(data.user));
   };
 
   const logout = async () => {
     await authService.logout();
-    setUser(null);
-    await AsyncStorage.removeItem('user');
-    await AsyncStorage.removeItem('onboarding_complete');
+    await clearSession();
   };
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const data = await api.get('/auth/me');
+      setUser(data.user);
+      await AsyncStorage.setItem('user', JSON.stringify(data.user));
+    } catch {
+      await clearSession();
+    }
+  }, [clearSession]);
 
   return (
     <AuthContext.Provider

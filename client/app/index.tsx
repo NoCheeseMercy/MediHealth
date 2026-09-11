@@ -11,7 +11,8 @@ export default function Index() {
     if (isLoading) return;
 
     (async () => {
-      await new Promise((r) => setTimeout(r, 1500));
+      // The 1.5s artificial delay here used to slow every single launch —
+      // including warm restarts — for no functional reason.
       const onboarded = await AsyncStorage.getItem('onboarding_complete');
 
       if (!isAuthenticated) {

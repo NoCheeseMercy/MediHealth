@@ -17,6 +17,13 @@ android/build/
 # Environment
 .env
 
+# Signing keys — never commit these
+*.keystore
+*.jks
+
+# Gradle/Kotlin local caches
+.kotlin/
+
 # IDE
 .idea/
 .vscode/

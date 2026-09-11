@@ -1,25 +1,47 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
+import { View, StyleSheet, type ViewStyle } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface CardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: ViewStyle | ViewStyle[];
   padded?: boolean;
+  /** `flat` drops the shadow — use for cards stacked inside a busy list. */
+  elevation?: 'none' | 'card' | 'raised';
+  /** Adds a colored left/right edge to flag severity. RTL-aware. */
+  accent?: 'success' | 'warning' | 'danger' | 'primary';
 }
 
-export function Card({ children, style, padded = true }: CardProps) {
-  const { colors, isDark } = useTheme();
+const ACCENTS = {
+  success: 'success',
+  warning: 'warning',
+  danger: 'danger',
+  primary: 'primary',
+} as const;
+
+export function Card({ children, style, padded = true, elevation = 'card', accent }: CardProps) {
+  const { colors, shadows, radius, isRTL } = useTheme();
+
+  const accentStyle: ViewStyle | undefined = accent
+    ? {
+        borderLeftWidth: isRTL ? 0 : 4,
+        borderRightWidth: isRTL ? 4 : 0,
+        borderLeftColor: accent === 'primary' ? colors.primary : colors[ACCENTS[accent]],
+        borderRightColor: accent === 'primary' ? colors.primary : colors[ACCENTS[accent]],
+      }
+    : undefined;
 
   return (
     <View
       style={[
         styles.card,
         {
-          backgroundColor: isDark ? colors.card : '#FFFFFF',
+          backgroundColor: colors.surface,
           borderColor: colors.border,
-          shadowOpacity: isDark ? 0 : 0.08,
+          borderRadius: radius.lg,
         },
+        elevation !== 'none' && shadows[elevation],
+        accentStyle,
         padded && styles.padded,
         style,
       ]}
@@ -31,12 +53,9 @@ export function Card({ children, style, padded = true }: CardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 3,
+    borderWidth: StyleSheet.hairlineWidth * 2,
   },
   padded: { padding: 16 },
 });
+
+export default Card;

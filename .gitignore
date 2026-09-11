@@ -20,6 +20,14 @@ android/build/
 .env
 .env.local
 
+# Signing keys — never commit these
+*.keystore
+*.jks
+
+# Local junk
+%USERPROFILE%/
+build.log.gz
+
 # IDE
 .idea/
 .vscode/

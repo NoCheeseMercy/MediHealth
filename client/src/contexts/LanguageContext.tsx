@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { I18nManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { translations, type TranslationKey } from '../constants/i18n/translations';
 import { useAuth } from './AuthContext';
@@ -25,29 +24,19 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       const stored = await AsyncStorage.getItem('language');
       const lang = (user?.preferredLanguage as Language) || (stored as Language) || 'ar';
       setLang(lang);
-      applyRTL(lang);
     })();
   }, [user?.preferredLanguage]);
-
-  const applyRTL = (lang: Language) => {
-    const rtl = lang === 'ar';
-    if (I18nManager.isRTL !== rtl) {
-      I18nManager.allowRTL(rtl);
-      I18nManager.forceRTL(rtl);
-    }
-  };
 
   const setLanguage = useCallback(
     async (lang: Language) => {
       setLang(lang);
       await AsyncStorage.setItem('language', lang);
-      applyRTL(lang);
       if (user) {
         try {
           const data = await api.patch('/profile', { preferredLanguage: lang });
           setUser(data.user);
         } catch {
-          // ignore
+          // keep the local preference even if profile sync fails
         }
       }
     },

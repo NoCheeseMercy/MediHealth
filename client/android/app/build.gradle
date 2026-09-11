@@ -4,6 +4,10 @@ apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
+def getProp = { String key ->
+    findProperty(key) ?: System.getenv(key)
+}
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -102,15 +106,29 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // Signing credentials come from ~/.gradle/gradle.properties (user-level,
+            // never committed) or environment variables. The keystore file itself is
+            // gitignored — it exists only on machines that build release APKs.
+            def releaseStoreFile = findProperty('MEDIHEALTH_RELEASE_STORE_FILE') ?: System.getenv('MEDIHEALTH_RELEASE_STORE_FILE')
+            def releaseStorePassword = findProperty('MEDIHEALTH_RELEASE_STORE_PASSWORD') ?: System.getenv('MEDIHEALTH_RELEASE_STORE_PASSWORD')
+            def releaseKeyAlias = findProperty('MEDIHEALTH_RELEASE_KEY_ALIAS') ?: System.getenv('MEDIHEALTH_RELEASE_KEY_ALIAS')
+            def releaseKeyPassword = findProperty('MEDIHEALTH_RELEASE_KEY_PASSWORD') ?: System.getenv('MEDIHEALTH_RELEASE_KEY_PASSWORD')
+            if (releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword && file(releaseStoreFile).exists()) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            def hasReleaseSigning = file('medihealth-release.keystore').exists()
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"

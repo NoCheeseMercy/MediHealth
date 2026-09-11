@@ -19,11 +19,13 @@ export class AppwriteDbService {
     email: string;
     fullName: string;
     preferredLanguage: string;
+    passwordHash?: string;
   }): Promise<Doc> {
     return databases.createDocument(DB_ID, COLLECTIONS.USER_PROFILES, data.userId, {
       email: data.email,
       fullName: data.fullName,
       preferredLanguage: data.preferredLanguage,
+      ...(data.passwordHash ? { passwordHash: data.passwordHash } : {}),
     });
   }
 

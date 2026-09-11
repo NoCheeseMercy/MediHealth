@@ -1,19 +1,10 @@
 import { Router } from 'express';
+import { authenticate } from '../middleware/auth';
 import { db } from '../services/appwriteDb.service';
 
 const router = Router();
 
-router.use((req, res, next) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Authentication required' });
-  try {
-    const decoded = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString()) as { userId: string };
-    (req as any).userId = decoded.userId;
-    next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-});
+router.use(authenticate);
 
 router.get('/', async (req: any, res: any) => {
   try {
@@ -70,11 +61,15 @@ router.post('/', async (req: any, res: any) => {
     const medication = await db.getUserMedication(medicationId, req.userId);
     if (!medication) return res.status(404).json({ error: 'Medication not found' });
 
+    const serializedDays = daysOfWeek ? JSON.stringify(daysOfWeek) : '[]';
     const reminder = await db.createReminder(req.userId, {
       medicationId,
+      medicationName: (medication as any).name,
       time,
       frequency: frequency || 'daily',
-      daysOfWeek: daysOfWeek ? JSON.stringify(daysOfWeek) : '[]',
+      daysOfWeek: serializedDays,
+      days: serializedDays,
+      enabled: true,
       isActive: true,
     });
 
@@ -91,11 +86,12 @@ router.patch('/:id', async (req: any, res: any) => {
     if (!reminder) return res.status(404).json({ error: 'Reminder not found' });
 
     const { isActive, time, frequency, daysOfWeek } = req.body;
+    const serializedDays = daysOfWeek ? JSON.stringify(daysOfWeek) : undefined;
     const updated = await db.updateReminder(req.params.id, {
-      ...(isActive !== undefined && { isActive }),
+      ...(isActive !== undefined && { isActive, enabled: isActive }),
       ...(time && { time }),
       ...(frequency && { frequency }),
-      ...(daysOfWeek && { daysOfWeek: JSON.stringify(daysOfWeek) }),
+      ...(serializedDays && { daysOfWeek: serializedDays, days: serializedDays }),
     });
 
     res.json({ reminder: { ...updated, id: updated.$id } });

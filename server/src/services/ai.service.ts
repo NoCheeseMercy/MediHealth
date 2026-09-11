@@ -22,7 +22,7 @@ export class AIService {
 
   constructor() {
     this.apiKey = process.env.NIM_API_KEY || '';
-    this.model = process.env.NIM_MODEL || 'stepfun-ai/step3.7-flash';
+    this.model = process.env.NIM_MODEL || 'stepfun-ai/step-3.7-flash';
     this.baseUrl = process.env.NIM_BASE_URL || 'https://integrate.api.nvidia.com/v1';
   }
 

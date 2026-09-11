@@ -1,5 +1,4 @@
 import { api } from './api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface User {
   id: string;
@@ -14,33 +13,27 @@ export interface AuthResponse {
 }
 
 export const authService = {
-  async register(
-    email: string,
-    password: string,
-    fullName: string,
-    preferredLanguage = 'ar'
-  ): Promise<AuthResponse> {
-    const data = await api.post('/auth/register', { email, password, fullName, preferredLanguage });
-    await api.setToken(data.token);
-    return data;
+  async register(email: string, password: string, fullName: string, preferredLanguage = 'ar'): Promise<AuthResponse> {
+    return api.post('/auth/register', { email, password, fullName, preferredLanguage });
   },
 
   async login(email: string, password: string): Promise<AuthResponse> {
-    const data = await api.post('/auth/login', { email, password });
-    await api.setToken(data.token);
-    return data;
+    return api.post('/auth/login', { email, password });
   },
 
   async logout() {
-    await api.setToken(null);
+    await api.logout();
   },
 
   async forgotPassword(email: string) {
     return api.post('/auth/forgot-password', { email });
   },
 
-  async resetPassword(email: string, code: string, newPassword: string) {
-    return api.post('/auth/reset-password', { email, code, newPassword });
+  /** Appwrite's recovery sends a *link* containing userId + secret, not a
+   *  numeric code — the old `(email, code, password)` signature could never
+   *  have completed a reset no matter what the user typed. */
+  async resetPassword(userId: string, secret: string, newPassword: string) {
+    return api.post('/auth/reset-password', { userId, secret, newPassword });
   },
 
   async changePassword(currentPassword: string, newPassword: string) {

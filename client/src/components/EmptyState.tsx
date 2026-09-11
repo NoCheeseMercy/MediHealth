@@ -1,38 +1,63 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
-import { useLanguage } from '../contexts/LanguageContext';
+import { Icon, type IconName } from './Icon';
+import { Button } from './Button';
 
 interface EmptyStateProps {
   title: string;
   description?: string;
-  icon?: string;
+  icon?: IconName;
+  /** Optional primary action — empty screens that tell you what to do next
+   *  outperform ones that just announce nothing is there. */
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
-export function EmptyState({ title, description, icon = '💊' }: EmptyStateProps) {
-  const { colors } = useTheme();
-  const { isRTL } = useLanguage();
+export function EmptyState({ title, description, icon = 'medications', actionLabel, onAction }: EmptyStateProps) {
+  const { colors, font, radius, isRTL, spacing } = useTheme();
 
   return (
     <View style={styles.container}>
-      <Text style={styles.icon}>{icon}</Text>
-      <Text style={[styles.title, { color: colors.text, textAlign: isRTL ? 'right' : 'center' }]}>
-        {title}
-      </Text>
+      <View
+        style={[
+          styles.iconRing,
+          { backgroundColor: colors.surfaceMuted, borderColor: colors.border, borderRadius: radius.pill },
+        ]}
+      >
+        <Icon name={icon} size={30} color={colors.textMuted} />
+      </View>
+
+      <Text style={[font.title, { color: colors.text, textAlign: isRTL ? 'right' : 'center' }]}>{title}</Text>
+
       {description ? (
         <Text
-          style={[styles.desc, { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'center' }]}
+          style={[
+            font.caption,
+            { color: colors.textSecondary, textAlign: isRTL ? 'right' : 'center', marginTop: 6, paddingHorizontal: spacing.lg },
+          ]}
         >
           {description}
         </Text>
+      ) : null}
+
+      {actionLabel && onAction ? (
+        <Button title={actionLabel} onPress={onAction} variant="soft" size="sm" fullWidth={false} style={{ marginTop: spacing.xl }} />
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { alignItems: 'center', padding: 32 },
-  icon: { fontSize: 48, marginBottom: 16 },
-  title: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
-  desc: { fontSize: 14, lineHeight: 22 },
+  container: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 24 },
+  iconRing: {
+    width: 72,
+    height: 72,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
 });
+
+export default EmptyState;

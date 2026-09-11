@@ -66,7 +66,7 @@ Then press `a` for Android or `i` for iOS.
 - APPWRITE_DATABASE_ID - Your database ID
 - JWT_SECRET - Secret for JWT tokens
 - NIM_API_KEY - NVIDIA NIM API key
-- NIM_MODEL - AI model (stepfun-ai/step3.7-flash)
+- NIM_MODEL - AI model (stepfun-ai/step-3.7-flash)
 
 ## Demo Account
 - Email: demo@medihealth.app

@@ -1,70 +1,81 @@
 import 'dotenv/config';
-import { Client, Users, ID } from 'node-appwrite';
+import bcrypt from 'bcryptjs';
 import { db } from '../src/services/appwriteDb.service';
 
 const DEMO_EMAIL = 'demo@medihealth.app';
 const DEMO_PASSWORD = 'Demo123!';
 const DEMO_NAME = 'حساب تجريبي';
 
-const client = new Client()
-  .setEndpoint(process.env.APPWRITE_ENDPOINT!)
-  .setProject(process.env.APPWRITE_PROJECT_ID!)
-  .setKey(process.env.APPWRITE_API_KEY!);
-
-const users = new Users(client);
-
 async function main() {
   console.log('Seeding demo account...\n');
 
-  let userId: string;
+  const existingProfiles = await db.listUserProfiles(DEMO_EMAIL);
+  let profile = existingProfiles.find((p: any) => p.email === DEMO_EMAIL);
+  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
 
-  try {
-    const list = await users.list({ search: DEMO_EMAIL });
-    const existing = list.users.find((u) => u.email === DEMO_EMAIL);
-    if (existing) {
-      userId = existing.$id;
-      console.log(`Demo user exists: ${userId}`);
-    } else {
-      userId = ID.unique();
-      await users.create({ userId, email: DEMO_EMAIL, password: DEMO_PASSWORD, name: DEMO_NAME });
-      console.log(`Created demo user: ${userId}`);
-    }
-  } catch (e) {
-    console.error('Failed to create demo user:', e);
-    process.exit(1);
-  }
-
-  let profile = await db.getUserProfile(userId);
-  if (!profile) {
+  if (profile) {
+    await db.updateUserProfile((profile as any).$id, {
+      fullName: DEMO_NAME,
+      preferredLanguage: 'ar',
+      passwordHash,
+    });
+    profile = await db.getUserProfile((profile as any).$id);
+    console.log(`Demo profile exists: ${(profile as any).$id}`);
+  } else {
     profile = await db.createUserProfile({
-      userId,
+      userId: crypto.randomUUID(),
       email: DEMO_EMAIL,
       fullName: DEMO_NAME,
       preferredLanguage: 'ar',
+      passwordHash,
     });
+    console.log(`Created demo profile: ${(profile as any).$id}`);
   }
 
-  const existingMeds = await db.getUserMedications(userId);
-  if (existingMeds.length === 0) {
-    const meds = [
-      { name: 'Metformin', dosage: '500mg', activeIngredient: 'Metformin HCl', form: 'Tablet', instructions: 'Take with meals twice daily', isActive: true },
-      { name: 'Lisinopril', dosage: '10mg', activeIngredient: 'Lisinopril', form: 'Tablet', instructions: 'Take once daily in the morning', isActive: true },
-      { name: 'Atorvastatin', dosage: '20mg', activeIngredient: 'Atorvastatin Calcium', form: 'Tablet', instructions: 'Take at bedtime', isActive: true },
-      { name: 'Aspirin', dosage: '81mg', activeIngredient: 'Acetylsalicylic Acid', form: 'Tablet', instructions: 'Take once daily', isActive: true },
-    ];
+  const userId = (profile as any).$id;
+  let existingMeds = await db.getUserMedications(userId);
+  const meds = [
+    { name: 'Metformin', dosage: '500mg', activeIngredient: 'Metformin HCl', form: 'Tablet', instructions: 'Take with meals twice daily', isActive: true },
+    { name: 'Lisinopril', dosage: '10mg', activeIngredient: 'Lisinopril', form: 'Tablet', instructions: 'Take once daily in the morning', isActive: true },
+    { name: 'Atorvastatin', dosage: '20mg', activeIngredient: 'Atorvastatin Calcium', form: 'Tablet', instructions: 'Take at bedtime', isActive: true },
+    { name: 'Aspirin', dosage: '81mg', activeIngredient: 'Acetylsalicylic Acid', form: 'Tablet', instructions: 'Take once daily', isActive: true },
+  ];
 
+  if (existingMeds.length === 0) {
     const createdMeds = [];
     for (const med of meds) {
       const doc = await db.createUserMedication(userId, med);
       createdMeds.push(doc);
       console.log(`  Medication: ${med.name}`);
     }
+    existingMeds = createdMeds;
+  }
 
-    for (const med of createdMeds) {
-      await db.createReminder(userId, { medicationId: med.$id, time: '08:00', frequency: 'daily', daysOfWeek: [], isActive: true });
-      await db.createReminder(userId, { medicationId: med.$id, time: '20:00', frequency: 'daily', daysOfWeek: [], isActive: true });
+  const existingReminders = await db.getReminders(userId);
+  if (existingReminders.length === 0) {
+    for (const med of existingMeds) {
+      await db.createReminder(userId, {
+        medicationId: med.$id,
+        medicationName: med.name,
+        time: '08:00',
+        frequency: 'daily',
+        daysOfWeek: '[]',
+        days: '[]',
+        enabled: true,
+        isActive: true,
+      });
+      await db.createReminder(userId, {
+        medicationId: med.$id,
+        medicationName: med.name,
+        time: '20:00',
+        frequency: 'daily',
+        daysOfWeek: '[]',
+        days: '[]',
+        enabled: true,
+        isActive: true,
+      });
     }
-    console.log(`  Reminders created`);
+    console.log('  Reminders created');
 
     const demoAnalysis = {
       score: 72,
@@ -107,9 +118,9 @@ async function main() {
       analysisResults: JSON.stringify(demoAnalysis),
     });
 
-    console.log(`  Analysis & scan history created`);
+    console.log('  Analysis & scan history created');
   } else {
-    console.log(`  Demo data already exists`);
+    console.log('  Demo data already exists');
   }
 
   console.log('\nDemo seed complete!');

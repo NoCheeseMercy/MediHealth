@@ -1,19 +1,10 @@
 import { Router } from 'express';
+import { authenticate } from '../middleware/auth';
 import { db } from '../services/appwriteDb.service';
 
 const router = Router();
 
-router.use((req, res, next) => {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Authentication required' });
-  try {
-    const decoded = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString()) as { userId: string };
-    (req as any).userId = decoded.userId;
-    next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-});
+router.use(authenticate);
 
 router.get('/', async (req: any, res: any) => {
   try {

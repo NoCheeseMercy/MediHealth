@@ -7,19 +7,18 @@ RUN npm ci
 
 COPY server/tsconfig.json ./
 COPY server/src ./src
-COPY server/prisma ./prisma
 
-RUN npx prisma generate && npx tsc
+RUN npm run build
 
 FROM node:20-alpine AS runner
 
 WORKDIR /app
+ENV NODE_ENV=production
 
 COPY server/package*.json ./
-RUN npm ci --only=production --ignore-scripts
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 3000
 

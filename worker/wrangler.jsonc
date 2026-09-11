@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "medihealth-ai-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    "NIM_MODEL": "stepfun-ai/step-3.7-flash"
+  }
+  // Secrets are NOT set here. Run:
+  //   npx wrangler secret put NIM_API_KEY        (required)
+  //   npx wrangler secret put APP_SHARED_SECRET  (optional hardening)
+}

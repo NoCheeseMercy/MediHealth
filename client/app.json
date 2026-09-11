@@ -3,7 +3,6 @@
     "name": "MediHealth AI",
     "slug": "medihealth",
     "version": "1.0.0",
-  "sdkVersion": "53.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -16,27 +15,50 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.medihealth.app"
+      "bundleIdentifier": "com.medihealth.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "MediHealth uses the camera to scan medication packages and prescriptions.",
+        "NSPhotoLibraryUsageDescription": "MediHealth lets you choose medication images from your photo library for analysis."
+      }
     },
     "android": {
+      "package": "com.medihealth.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#2563EB"
       },
-      "package": "com.medihealth.app",
       "permissions": [
-        "CAMERA"
+        "CAMERA",
+        "POST_NOTIFICATIONS",
+        "VIBRATE"
       ]
     },
     "scheme": "medihealth",
-    "plugins": [],
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MediHealth lets you choose medication images from your photo library for analysis.",
+          "cameraPermission": "MediHealth uses the camera to scan medication packages and prescriptions."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#2563EB"
+        }
+      ],
+      "expo-asset",
+      "expo-font"
+    ],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
+      "apiBaseUrl": "https://YOUR_API_HOST.example.com/api",
       "eas": {
-        "projectId": "452fa0f3-bade-4dc8-b656-6ab3ed901c7c",
-    "apiBaseUrl": "https://medihealth-api.railway.app/api"
+        "projectId": "452fa0f3-bade-4dc8-b656-6ab3ed901c7c"
       }
     }
   }

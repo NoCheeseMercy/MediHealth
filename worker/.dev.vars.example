@@ -1,0 +1,8 @@
+# Copy to .dev.vars for local `wrangler dev`.
+# NEVER commit .dev.vars — it is gitignored, and NIM_API_KEY must never leave
+# your machine or Cloudflare's secret store.
+NIM_API_KEY=
+# Optional: when set, clients must send this exact value as the x-mh-secret
+# header. Raises the bar against strangers finding your worker URL, but note
+# the client also carries it in the app bundle, so it is hardening, not true secrecy.
+APP_SHARED_SECRET=

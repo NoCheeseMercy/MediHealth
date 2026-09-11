@@ -1,8 +1,8 @@
+import 'dotenv/config';
 import express, { type Application, type Request, type Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 
 import authRoutes from './routes/auth';
 import dashboardRoutes from './routes/dashboard';
@@ -12,8 +12,6 @@ import reminderRoutes from './routes/reminders';
 import scanRoutes from './routes/scan';
 import profileRoutes from './routes/profile';
 import healthRoutes from './routes/index';
-
-dotenv.config();
 
 const app: Application = express();
 const PORT = process.env.PORT || 3000;
