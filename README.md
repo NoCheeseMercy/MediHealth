@@ -27,7 +27,7 @@ It is kept for a planned source-verification feature.
 |-------|------------|
 | Mobile | React Native, Expo 53, Expo Router, React Query |
 | AI proxy | Cloudflare Workers (free tier) |
-| AI | NVIDIA NIM — `stepfun-ai/step-3.7-flash` |
+| AI | NVIDIA NIM — `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` |
 | Database & Auth | Appwrite |
 
 ## Quick Start

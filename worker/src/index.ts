@@ -16,7 +16,7 @@ interface Env {
 }
 
 const NIM_CHAT_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
-const DEFAULT_MODEL = 'stepfun-ai/step-3.7-flash';
+const DEFAULT_MODEL = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning';
 const MAX_BODY_BYTES = 8 * 1024 * 1024; // images arrive as base64; 8 MB is generous
 
 const CORS_HEADERS: Record<string, string> = {

@@ -9,7 +9,7 @@
     "head_sampling_rate": 1
   },
   "vars": {
-    "NIM_MODEL": "stepfun-ai/step-3.7-flash"
+    "NIM_MODEL": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
   }
   // Secrets are NOT set here. Run:
   //   npx wrangler secret put NIM_API_KEY        (required)
