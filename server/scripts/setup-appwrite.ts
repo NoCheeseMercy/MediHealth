@@ -87,10 +87,6 @@ async function ensureCollection(id: string, name: string, attributes: AttributeC
       Permission.create(Role.users()),
       Permission.update(Role.users()),
       Permission.delete(Role.users()),
-      Permission.read(Role.any()),
-      Permission.create(Role.any()),
-      Permission.update(Role.any()),
-      Permission.delete(Role.any()),
     ]);
     console.log(`+ Created collection: ${id}`);
     await waitForAttributes();
