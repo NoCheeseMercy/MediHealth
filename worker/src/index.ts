@@ -31,11 +31,10 @@ const MAX_BODY_BYTES = 8 * 1024 * 1024; // images arrive as base64; 8 MB is gene
 
 /**
  * Voice-command interpreter prompt. Validated live against this exact wording
- * on 2026-09-12: 7/8 cases correct in Arabic + English (the one miss was an
- * upstream 503, not a misclassification). Covers dialects ("وين سجل",
- * "روح الكاميرا"), walkthrough control, and demo sign-in.
+ * on 2026-09-12 (Arabic + English, incl. dialects like "وين سجل" and
+ * "روح الكاميرا"). `ask` covers questions the user wants answered aloud.
  */
-const VOICE_SYSTEM_PROMPT = `You interpret voice commands for the MediHealth medication-safety app. Reply ONLY with JSON: {"action":"...","target":"..."}. Actions: navigate (open a screen; target exactly one of: dashboard, medications, scanner, history, profile, reminders, analyze), walk_next (advance the onboarding walkthrough), walk_repeat (repeat the current narration), walk_stop (stop narration or skip the walkthrough), demo_login (sign in with the demo account), unknown (not a command for this app). Understand Arabic and English, including dialects and paraphrases. Examples:
+const VOICE_SYSTEM_PROMPT = `You interpret voice transcripts for the MediHealth medication-safety app. Reply ONLY with JSON: {"action":"...","target":"..."}. Actions: navigate (open a screen; target exactly one of: dashboard, medications, scanner, history, profile, reminders, analyze), walk_next (advance the onboarding walkthrough), walk_repeat (repeat the current narration), walk_stop (stop narration or skip the walkthrough), demo_login (sign in with the demo account), ask (the user is asking a question they want answered aloud — about medication, health, or how to use the app), unknown (greetings, filler, or anything not meant for this app). Understand Arabic and English, including dialects and paraphrases. Examples:
 افتح الأدوية -> {"action":"navigate","target":"medications"}
 وين سجل التحليلات -> {"action":"navigate","target":"history"}
 روح الكاميرا -> {"action":"navigate","target":"scanner"}
@@ -50,10 +49,12 @@ next please -> {"action":"walk_next","target":""}
 stop it -> {"action":"walk_stop","target":""}
 sign in with the demo account -> {"action":"demo_login","target":""}
 use the demo -> {"action":"demo_login","target":""}
-what is metformin -> {"action":"unknown","target":""}
+what is metformin -> {"action":"ask","target":""}
+إزاي أضيف دواء جديد -> {"action":"ask","target":""}
+هل بانادول آمن مع الوارفارين -> {"action":"ask","target":""}
 مرحبا كيف حالك -> {"action":"unknown","target":""}`;
 
-const VOICE_ACTIONS = ['navigate', 'walk_next', 'walk_repeat', 'walk_stop', 'demo_login', 'unknown'];
+const VOICE_ACTIONS = ['navigate', 'walk_next', 'walk_repeat', 'walk_stop', 'demo_login', 'ask', 'unknown'];
 const NAV_TARGETS = ['dashboard', 'medications', 'scanner', 'history', 'profile', 'reminders', 'analyze'];
 
 const CORS_HEADERS: Record<string, string> = {
@@ -314,6 +315,37 @@ async function voice(env: Env, body: Record<string, unknown>): Promise<Response>
   return json({ action, target });
 }
 
+/**
+ * Spoken assistant for voice questions ({"action":"ask"} on the client). Short,
+ * conversational, safety-constrained. Language is a hard MUST — the analyze
+ * route learned that softer wording leaks the wrong language.
+ */
+async function chat(env: Env, body: Record<string, unknown>): Promise<Response> {
+  const question = typeof body.question === 'string' ? body.question.trim() : '';
+  if (!question) {
+    throw new HttpError('question is required', 400);
+  }
+  const isAr = body.lang !== 'en';
+  const system = `You are the spoken voice assistant of MediHealth, a medication-safety app. The user is listening, not reading.
+Answer in 1-3 short spoken sentences. No markdown, no lists, no emoji, no bullet points — it is read aloud.
+${
+    isAr
+      ? 'You MUST answer entirely in Arabic, using natural spoken-style Arabic.'
+      : 'You MUST answer entirely in English.'
+  }
+Rules: you are informational only, never a doctor. If asked whether specific medications can be taken together or about doses, answer briefly and point to the app's analysis feature and to a pharmacist. If the question is about using the app itself, explain where the feature lives (dashboard, medications, scanner, history, settings). If the question has nothing to do with medications or health, answer in one short sentence and kindly steer back. Never read long numbers or symbols — say them in words.`;
+
+  const content = await callNim(env, {
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: question },
+    ],
+    temperature: 0.4,
+    max_tokens: 220,
+  });
+  return json({ answer: content.trim().slice(0, 600) });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
@@ -339,8 +371,10 @@ export default {
           return tts(env, body);
         case '/voice':
           return voice(env, body);
+        case '/chat':
+          return chat(env, body);
         default:
-          return fail('Not found. Routes: POST /analyze, POST /extract, POST /tts, POST /voice', 404);
+          return fail('Not found. Routes: POST /analyze, POST /extract, POST /tts, POST /voice, POST /chat', 404);
       }
     } catch (e) {
       if (e instanceof HttpError) return fail(e.message, e.status);

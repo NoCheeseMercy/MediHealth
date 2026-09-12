@@ -229,7 +229,7 @@ export function matchNavCommand(transcript: string): string | null {
 // ── AI command interpretation ───────────────────────────────────────
 
 export interface VoiceAction {
-  action: 'navigate' | 'walk_next' | 'walk_repeat' | 'walk_stop' | 'demo_login' | 'unknown';
+  action: 'navigate' | 'walk_next' | 'walk_repeat' | 'walk_stop' | 'demo_login' | 'ask' | 'unknown';
   target?: string;
 }
 
@@ -273,7 +273,53 @@ export async function interpretCommand(transcript: string, narrating: boolean): 
     if (nav) return { action: 'navigate', target: nav };
   }
   if (/demo|تجريبي|تجربة/i.test(transcript)) return { action: 'demo_login' };
+  // Offline question detection: interrogatives or a question mark mean the
+  // user wants an answer, not navigation.
+  if (/؟|\?/.test(transcript) ||
+    /^(what|how|why|when|where|who|can|could|does|do|is|are|tell|explain)\b/i.test(transcript.trim()) ||
+    /^(إيه|ما|هل|كيف|ليه|ليش|متى|فين|أين|مين|عرف|اشرح|قول|إزاي|ازاى|طري)/.test(transcript.trim())) {
+    return { action: 'ask' };
+  }
   return { action: 'unknown' };
+}
+
+/**
+ * Asks the spoken assistant a question and speaks the answer. The Worker's
+ * /chat route answers in the requested language with a 1-3-sentence
+ * conversational style. Returns the answer text (for the on-screen card) or
+ * null when nothing could be retrieved.
+ */
+export async function requestAnswer(question: string): Promise<string | null> {
+  const base = process.env.EXPO_PUBLIC_AI_PROXY_URL;
+  if (!base) return null;
+  const lang = deviceNarrationLang();
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const shared = process.env.EXPO_PUBLIC_AI_SHARED_SECRET;
+    if (shared) headers['x-mh-secret'] = shared;
+    // Hermes has no AbortSignal.timeout — manual controller timer.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30000);
+    let res: Response;
+    try {
+      res = await fetch(`${base.replace(/\/+$/, '')}/chat`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ question, lang }),
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) return null;
+    const data = (await res.json()) as { answer?: string };
+    const answer = (data.answer || '').trim();
+    if (!answer) return null;
+    void speak(answer, lang);
+    return answer;
+  } catch {
+    return null;
+  }
 }
 
 // ── Walkthrough → sign-in handoff ───────────────────────────────────

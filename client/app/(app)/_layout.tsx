@@ -12,7 +12,9 @@ import {
   narrText,
   startListening,
   stopListening,
-  matchNavCommand,
+  interpretCommand,
+  requestAnswer,
+  stopSpeaking,
 } from '../../src/services/narration';
 
 function TabIcon({ name, color, focused, activeBg }: { name: IconName; color: string; focused: boolean; activeBg: string }) {
@@ -37,20 +39,30 @@ const NAV_ROUTES: Record<string, string> = {
 
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth();
-  const { colors, isRTL } = useTheme();
+  const { colors, isRTL, font, radius, shadows } = useTheme();
   const { t } = useLanguage();
   const insets = useSafeAreaInsets();
 
   const [listening, setListening] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [answer, setAnswer] = useState<string | null>(null);
 
   const stopListenRef = useRef<(() => void) | null>(null);
+  const answerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const narrLang = deviceNarrationLang();
 
   useEffect(() => () => {
     stopListenRef.current?.();
     stopListening();
+    if (answerTimerRef.current) clearTimeout(answerTimerRef.current);
   }, []);
+
+  const showAnswer = (text: string) => {
+    setAnswer(text);
+    if (answerTimerRef.current) clearTimeout(answerTimerRef.current);
+    answerTimerRef.current = setTimeout(() => setAnswer(null), 10000);
+  };
 
   const toggleListening = () => {
     if (stopListenRef.current) {
@@ -62,10 +74,31 @@ export default function AppLayout() {
     setListening(true);
     stopListenRef.current = startListening({
       lang: narrLang,
-      onFinal: (transcript) => {
-        const nav = matchNavCommand(transcript);
-        if (nav && NAV_ROUTES[nav]) {
-          router.push(NAV_ROUTES[nav] as never);
+      onFinal: async (transcript) => {
+        setBusy(true);
+        try {
+          const cmd = await interpretCommand(transcript, false);
+          switch (cmd.action) {
+            case 'navigate':
+              if (cmd.target && NAV_ROUTES[cmd.target]) {
+                router.push(NAV_ROUTES[cmd.target] as never);
+              }
+              break;
+            case 'ask': {
+              const ans = await requestAnswer(transcript);
+              if (ans) showAnswer(ans);
+              break;
+            }
+            case 'walk_stop':
+              // Already signed in, so walkthrough actions are meaningless —
+              // except stop, which usefully cancels a spoken answer.
+              stopSpeaking();
+              break;
+            default:
+              break;
+          }
+        } finally {
+          setBusy(false);
         }
       },
       onError: (message) => {
@@ -162,8 +195,41 @@ export default function AppLayout() {
           pointerEvents="none"
           style={[styles.listeningPill, { bottom: tabHeight + 66, backgroundColor: colors.overlay }]}
         >
-          <Text style={styles.listeningText}>{narrText('narrListening')}</Text>
+          <Text style={styles.listeningText}>
+            {busy ? narrText('narrThinking') : narrText('narrListening')}
+          </Text>
         </View>
+      ) : null}
+
+      {/* Spoken answer to a voice question — shown so the user can read what the
+          assistant said, auto-dismisses, or tap to stop. */}
+      {answer ? (
+        <TouchableOpacity
+          onPress={stopSpeaking}
+          accessibilityRole="button"
+          style={[
+            styles.answerCard,
+            {
+              bottom: tabHeight + 66,
+              backgroundColor: colors.surface,
+              borderColor: colors.primary,
+              borderRadius: radius.lg,
+            },
+            shadows.raised,
+          ]}
+        >
+          <View style={{ flexDirection: isRTL ? 'row-reverse' : 'row', alignItems: 'flex-start', gap: 10 }}>
+            <Icon name="bulb" size={18} color={colors.primary} />
+            <Text
+              style={[
+                font.caption,
+                { color: colors.text, flex: 1, textAlign: isRTL ? 'right' : 'left', lineHeight: 21 },
+              ]}
+            >
+              {answer}
+            </Text>
+          </View>
+        </TouchableOpacity>
       ) : null}
     </View>
   );
@@ -199,4 +265,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   listeningText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  answerCard: {
+    position: 'absolute',
+    alignSelf: 'stretch',
+    marginHorizontal: 20,
+    borderWidth: 1.5,
+    padding: 14,
+  },
 });
